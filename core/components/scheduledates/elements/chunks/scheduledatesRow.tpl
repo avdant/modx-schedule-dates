@@ -1,0 +1,1 @@
+<li class="scheduledates-event [[+dateClass]]"><time datetime="[[+date]]"><strong>[[+day]].[[+month]]</strong><span>[[+weekday]]</span></time><div><span class="scheduledates-type">[[+typeName]]</span><h4>[[+title]]</h4>[[+descriptionHtml]]</div></li>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>ScheduleDates native manager check</title>
+<link rel="stylesheet" href="../../modx-docker/www/manager/assets/ext3/resources/css/ext-all-notheme-min.css">
+<link rel="stylesheet" href="../../modx-docker/www/manager/templates/default/css/index.css">
+<script>window.fixtureErrors=[]; window.addEventListener('error', event => fixtureErrors.push(event.message));</script>
+<script src="../../modx-docker/www/manager/assets/ext3/adapter/ext/ext-base.js"></script>
+<script src="../../modx-docker/www/manager/assets/ext3/ext-all.js"></script>
+<script src="../../modx-docker/www/manager/assets/modext/core/modx.js"></script>
+<script>
+MODx.config = {cultureKey:'ru', default_per_page:20, debug:1};
+MODx.perm = {}; MODx.request = {}; MODx.lang = {};
+window._ = key => ({save:'Сохранить',cancel:'Отмена',error:'Ошибка',yes:'Да',no:'Нет',per_page:'На странице',saving:'Сохранение…'}[key] || key);
+window.ScheduleDatesConfig = {connector:'/fixture', auth:'fixture'};
+</script>
+<script src="../../modx-docker/www/manager/assets/modext/util/utilities.js"></script>
+<script src="../../modx-docker/www/manager/assets/modext/core/modx.component.js"></script>
+<script src="../../modx-docker/www/manager/assets/modext/widgets/core/modx.panel.js"></script>
+<script src="../../modx-docker/www/manager/assets/modext/widgets/core/modx.tabs.js"></script>
+<script src="../../modx-docker/www/manager/assets/modext/widgets/core/modx.window.js"></script>
+<script src="../../modx-docker/www/manager/assets/modext/widgets/core/modx.combo.js"></script>
+<script src="../../modx-docker/www/manager/assets/modext/widgets/core/modx.grid.js"></script>
+<div id="modx-content"><div id="modx-panel-holder"></div></div>
+<script>
+const fixtureYear = new Date().getFullYear();
+let fixtureTypes = [{id:1,code:'exam',name:'Экзамен'},{id:2,code:'check',name:'Проверка'}];
+let fixtureEvents = Array.from({length:25}, (_,i) => ({id:i+1,event_date:fixtureYear+'-11-18',title:'Событие '+(i+1),description:'Описание',type:'exam',active:1}));
+let fixtureLastSave;
+Ext.Ajax.request = options => {
+    const form = options.form && (typeof options.form === 'string' ? document.getElementById(options.form) : (options.form.dom || options.form));
+    const body = typeof options.params === 'string' ? Object.fromEntries(new URLSearchParams(options.params)) : options.params;
+    const values = Object.assign(form ? Object.fromEntries(new FormData(form)) : {}, body || {});
+    let result;
+    if (values.operation === 'gridTypes' || values.operation === 'gridEvents') {
+        let rows = values.operation === 'gridTypes' ? fixtureTypes.slice() : fixtureEvents.map(row => Object.assign({}, row, {type_name:fixtureTypes.find(type => type.code === row.type).name}));
+        if (values.operation === 'gridEvents' && values.year) rows = rows.filter(row => row.event_date.startsWith(values.year + '-'));
+        if (values.query) rows = rows.filter(row => JSON.stringify(row).includes(values.query));
+        const total = rows.length;
+        const start = Number(values.start || 0), limit = Number(values.limit || 0);
+        result = {success:true,total,results:limit ? rows.slice(start,start+limit) : rows.slice(start)};
+    } else if (values.operation === 'save') {
+        fixtureLastSave = values;
+        const row = {id:Number(values.id)||fixtureEvents.length+1,event_date:values.date_iso,title:values.title,description:values.description,type:values.type,active:values.active ? 1 : 0};
+        const index = fixtureEvents.findIndex(item => item.id === row.id);
+        if (index === -1) fixtureEvents.push(row); else fixtureEvents[index] = row;
+        result = {success:true,data:[],object:{count:1}};
+    } else if (values.operation === 'saveType') {
+        const row = {id:Number(values.id)||fixtureTypes.length+1,name:values.name,code:values.code};
+        const index = fixtureTypes.findIndex(item => item.id === row.id);
+        if (index === -1) fixtureTypes.push(row); else fixtureTypes[index] = row;
+        result = {success:true,data:[]};
+    } else result = {success:true,data:[]};
+    const response = {status:200,responseText:JSON.stringify(result)};
+    setTimeout(() => {
+        if (options.success) options.success.call(options.scope || window,response,options);
+        if (options.callback) options.callback.call(options.scope || window,options,true,response);
+    }, 5);
+    return {};
+};
+Ext.onReady(() => new Ext.Viewport({layout:'border', items:[
+    {region:'west', width:innerWidth > 640 ? 260 : 0},
+    {region:'center', id:'modx-content', applyTo:'modx-content', autoScroll:true}
+]}));
+</script>
+<script src="../assets/components/scheduledates/js/mgr.js"></script>
+<script>
+window.addEventListener('load', () => setTimeout(async () => {
+    const checks = {};
+    const pause = () => new Promise(resolve => setTimeout(resolve, 200));
+    try {
+        const tabs = Ext.getCmp('sd-tabs'), grid = Ext.getCmp('sd-grid-events');
+        checks.twoNativeTabs = tabs instanceof MODx.Tabs && tabs.items.getCount() === 2;
+        checks.nativeGrid = grid instanceof MODx.grid.Grid;
+        checks.noCalendars = !document.querySelector('.sd-calendar');
+        checks.pagination = grid.getStore().getCount() === 20 && grid.getStore().getTotalCount() === 25;
+        grid.getBottomToolbar().changePage(2); await pause();
+        checks.secondPage = grid.getStore().getCount() === 5;
+        const yearFilter = grid.getTopToolbar().getComponent('sd-year-filter-wrap').getComponent('sd-year-filter');
+        checks.yearDropdown = yearFilter instanceof Ext.form.ComboBox && yearFilter.getValue() === fixtureYear;
+        const chooseYear = year => {
+            yearFilter.setValue(year);
+            yearFilter.fireEvent('select', yearFilter, yearFilter.store.getAt(yearFilter.store.findExact('year', year)));
+        };
+        chooseYear(fixtureYear + 1); await pause();
+        checks.yearFiltersAndResetsPage = grid.getStore().getTotalCount() === 0 && grid.getBottomToolbar().cursor === 0 && grid.getStore().baseParams.year === fixtureYear + 1;
+        chooseYear(fixtureYear); await pause();
+        checks.yearRestored = grid.getStore().getTotalCount() === 25;
+        grid.getBottomToolbar().changePage(1); await pause();
+        grid.getSelectionModel().selectRow(0);
+        grid.fireEvent('rowdblclick',grid,0,{}); await pause();
+        const eventWindow = Ext.WindowMgr.getActive();
+        const form = eventWindow.fp.getForm();
+        checks.nativeEventWindow = eventWindow instanceof MODx.Window;
+        checks.nativeDate = form.findField('event_date') instanceof Ext.form.DateField;
+        checks.nativeTypeSelect = form.findField('type') instanceof Ext.form.ComboBox;
+        checks.existingValues = form.findField('title').getValue() === 'Событие 1' && form.findField('type').getValue() === 'exam';
+        form.findField('title').setValue('Изменённое событие');
+        form.findField('event_date').setValue(new Date(fixtureYear,10,19));
+        form.findField('active').setValue(false);
+        eventWindow.submit(); await pause();
+        checks.isoDateSubmitted = fixtureLastSave.date_iso === fixtureYear+'-11-19';
+        checks.uncheckedSaved = fixtureEvents[0].active === 0 && fixtureEvents[0].title === 'Изменённое событие';
+        tabs.setActiveTab(1); await pause();
+        const typeGrid = Ext.getCmp('sd-grid-types');
+        checks.nativeTypeGrid = typeGrid instanceof MODx.grid.Grid;
+        typeGrid.createRow(); await pause();
+        const typeWindow = Ext.WindowMgr.getActive();
+        typeWindow.fp.getForm().setValues({name:'Аттестация',code:'attestation'});
+        typeWindow.submit(); await pause();
+        checks.typeCreated = typeGrid.getStore().getCount() === 3;
+        tabs.setActiveTab(0); grid.createRow(); await pause();
+        const createWindow = Ext.WindowMgr.getActive();
+        checks.newTypeInDropdown = createWindow.fp.getForm().findField('type').store.getCount() === 3;
+        createWindow.close();
+        checks.noHorizontalOverflow = document.getElementById('sd-panel').scrollWidth <= document.getElementById('sd-panel').clientWidth + 1;
+    } catch (error) { fixtureErrors.push(error.message); }
+    const output = document.createElement('output'); output.id = 'layout-result';
+    output.textContent = JSON.stringify({width:innerWidth, checks,errors:fixtureErrors,passed:Object.values(checks).every(Boolean)&&!fixtureErrors.length});
+    document.body.append(output);
+}, 150));
+</script>
+</html>

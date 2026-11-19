@@ -85,4 +85,22 @@ $page = $process(['operation'=>'gridTypes', 'limit'=>0]);
 $assert($page['success'] && $page['total'] === 2, 'Combo receives complete types list');
 $_SERVER['REQUEST_METHOD'] = 'GET';
 $assert(!$process(['operation'=>'saveType', 'code'=>'forbidden', 'name'=>'GET'])['success'], 'GET mutations rejected');
+$_SERVER['REQUEST_METHOD'] = 'POST';
+$original = $service->list(2027, 'native')[0];
+$copy = ['operation'=>'save', 'id'=>0, 'title'=>$original['title'], 'description'=>$original['description'], 'type'=>$original['type'], 'active'=>$original['active']];
+$result = $process($copy + ['dates_json'=>json_encode(['2028-01-10', '2028-01-20', '2028-01-20', '2028-02-10'])]);
+$created = $service->list(2028, 'native');
+$assert($result['success'] && $result['object']['count'] === 3 && count($created) === 3, 'Multiple dates create independent events and repeated dates are deduplicated');
+$assert($service->list(2027, 'native')[0] === $original, 'Copying to new dates does not change the source event');
+foreach ($created as $event) {
+    $assert($event['title'] === $original['title'] && $event['description'] === $original['description'] && $event['active'] === $original['active'], 'Copied event preserves its shared fields');
+}
+$result = $process($copy + ['dates_json'=>json_encode(['2029-01-10', '2029-02-30'])]);
+$assert(!$result['success'] && $service->list(2029) === [], 'An invalid date rejects the entire batch');
+$assert(!$process($copy + ['dates_json'=>'[]'])['success'], 'An empty date list is rejected');
+$assert(!$process($copy + ['dates_json'=>'not json'])['success'], 'Malformed date JSON is rejected');
+$result = $process($copy + ['id'=>0, 'dates_json'=>json_encode(array_fill(0, 367, '2028-01-10'))]);
+$assert(!$result['success'], 'More than 366 dates are rejected');
+$result = $process(array_merge($copy, ['id'=>$original['id'], 'dates_json'=>json_encode(['2028-03-01', '2028-03-02'])]));
+$assert(!$result['success'] && $service->list(2027, 'native')[0] === $original, 'Editing an existing event still accepts only one date');
 echo "Passed $checks MySQL type checks using temporary tables.\n";

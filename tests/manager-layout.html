@@ -41,9 +41,12 @@ Ext.Ajax.request = options => {
         result = {success:true,total,results:limit ? rows.slice(start,start+limit) : rows.slice(start)};
     } else if (values.operation === 'save') {
         fixtureLastSave = values;
-        const row = {id:Number(values.id)||fixtureEvents.length+1,event_date:values.date_iso,title:values.title,description:values.description,type:values.type,active:values.active ? 1 : 0};
+        const dates = values.dates_json ? JSON.parse(values.dates_json) : [values.date_iso];
+        dates.forEach(date => {
+        const row = {id:Number(values.id)||fixtureEvents.length+1,event_date:date,title:values.title,description:values.description,type:values.type,active:values.active ? 1 : 0};
         const index = fixtureEvents.findIndex(item => item.id === row.id);
         if (index === -1) fixtureEvents.push(row); else fixtureEvents[index] = row;
+        });
         result = {success:true,data:[],object:{count:1}};
     } else if (values.operation === 'saveType') {
         const row = {id:Number(values.id)||fixtureTypes.length+1,name:values.name,code:values.code};
@@ -112,7 +115,25 @@ window.addEventListener('load', () => setTimeout(async () => {
         tabs.setActiveTab(0); grid.createRow(); await pause();
         const createWindow = Ext.WindowMgr.getActive();
         checks.newTypeInDropdown = createWindow.fp.getForm().findField('type').store.getCount() === 3;
-        createWindow.close();
+        createWindow.fp.getForm().findField('title').setValue('Несколько дат');
+        createWindow.addDate();
+        const dateRows = createWindow.fp.getComponent('dates');
+        dateRows.items.get(0).getComponent('date').setValue(new Date(fixtureYear, 0, 10));
+        dateRows.items.get(1).getComponent('date').setValue(new Date(fixtureYear, 1, 20));
+        createWindow.submit(); await pause();
+        checks.multipleDatesSaved = JSON.parse(fixtureLastSave.dates_json).length === 2 && fixtureEvents.filter(row => row.title === 'Несколько дат').length === 2;
+        grid.getSelectionModel().selectRow(0);
+        const source = Object.assign({}, grid.getSelectionModel().getSelected().data);
+        grid.copyRow(); await pause();
+        const copyWindow = Ext.WindowMgr.getActive(), copyForm = copyWindow.fp.getForm();
+        checks.copyFields = Number(copyForm.findField('id').getValue()) === 0 && copyForm.findField('title').getValue() === source.title && copyForm.findField('description').getValue() === source.description && copyForm.findField('type').getValue() === source.type && copyForm.findField('active').getValue() === (Number(source.active) === 1);
+        copyWindow.addDate();
+        const copyRows = copyWindow.fp.getComponent('dates');
+        copyRows.items.get(1).items.get(1).handler.call(copyWindow, copyRows.items.get(1).items.get(1));
+        checks.dateRowRemoved = copyRows.items.getCount() === 1;
+        copyRows.items.get(0).getComponent('date').setValue(new Date(fixtureYear, 2, 10));
+        copyWindow.submit(); await pause();
+        checks.sourceUnchanged = fixtureEvents.find(row => row.id === source.id).event_date === source.event_date;
         checks.noHorizontalOverflow = document.getElementById('sd-panel').scrollWidth <= document.getElementById('sd-panel').clientWidth + 1;
     } catch (error) { fixtureErrors.push(error.message); }
     const output = document.createElement('output'); output.id = 'layout-result';

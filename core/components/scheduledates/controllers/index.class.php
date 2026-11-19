@@ -21,11 +21,12 @@ class ScheduleDatesIndexManagerController extends modExtraManagerController
     public function loadCustomCssJs()
     {
         $url = $this->modx->getOption('assets_url') . 'components/scheduledates/';
+        $this->addCss($url . 'css/mgr.css?v=1.1.0-date-layout-2');
         $this->addHtml('<script>window.ScheduleDatesConfig=' . json_encode([
             'connector' => $url . 'connector.php',
             'auth' => $this->modx->user->getUserToken($this->modx->context->get('key')),
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>');
-        $this->addLastJavascript($url . 'js/mgr.js?v=1.0.0');
+        $this->addLastJavascript($url . 'js/mgr.js?v=1.1.0-date-layout-2');
     }
 
     public function getTemplateFile()

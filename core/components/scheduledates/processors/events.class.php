@@ -47,7 +47,9 @@ class ScheduleDatesEventsProcessor extends Processor
                         ? json_decode($this->getProperty('data'), true)
                         : [
                             'id'=>$this->getProperty('id', 0),
-                            'dates'=>[$this->getProperty('date_iso', '')],
+                            'dates'=>$this->getProperty('dates_json', '') !== ''
+                                ? json_decode($this->getProperty('dates_json'), true)
+                                : [$this->getProperty('date_iso', '')],
                             'title'=>$this->getProperty('title', ''),
                             'description'=>$this->getProperty('description', ''),
                             'type'=>$this->getProperty('type', ''),

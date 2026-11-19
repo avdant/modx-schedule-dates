@@ -23,7 +23,7 @@ $modx = new modX();
 $modx->initialize('mgr');
 $root = dirname(__DIR__);
 $builder = new modPackageBuilder($modx);
-$builder->createPackage('scheduledates', '1.0.0', 'pl');
+$builder->createPackage('scheduledates', '1.1.0', 'pl');
 $builder->registerNamespace('scheduledates', false, true, '{core_path}components/scheduledates/', '{assets_path}components/scheduledates/');
 
 $category = $modx->newObject(modCategory::class);
@@ -106,7 +106,7 @@ if (!$builder->pack()) {
     fwrite(STDERR, "Package build failed.\n");
     exit(1);
 }
-$source = MODX_CORE_PATH . 'packages/scheduledates-1.0.0-pl.transport.zip';
+$source = MODX_CORE_PATH . 'packages/scheduledates-1.1.0-pl.transport.zip';
 $dist = $root . '/dist';
 if (!is_dir($dist) && !mkdir($dist, 0775, true)) {
     throw new RuntimeException('Cannot create dist directory.');

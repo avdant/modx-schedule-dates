@@ -23,19 +23,33 @@
     ScheduleDates.EventWindow = function(config) {
         config = config || {};
         const record = Ext.apply({}, config.record || {});
-        const date = record.event_date ? Date.parseDate(record.event_date, 'Y-m-d') : (config.defaultDate || new Date());
-        record.event_date = date;
+        const copying = !!config.copyEvent;
         record.active = record.id ? Number(record.active) === 1 : true;
+        if (copying) {
+            delete record.id;
+            delete record.event_date;
+        }
+        this.multipleDates = !record.id;
+        this.dateCounter = 0;
+        const date = record.event_date ? Date.parseDate(record.event_date, 'Y-m-d') : (config.defaultDate || new Date());
+        if (record.id) record.event_date = date;
+        config.record = record;
+        const dateFields = this.multipleDates ? [
+            {xtype: 'fieldset', itemId: 'dates', title: 'Даты событий', height: 160, autoScroll: true,
+                items: [this.makeDateRow(date)]},
+            {xtype: 'button', text: 'Добавить дату', style: 'margin:12px 0 16px', handler: this.addDate, scope: this}
+        ] : [{xtype: 'datefield', name: 'event_date', fieldLabel: 'Дата события', allowBlank: false,
+            format: 'd.m.Y', altFormats: 'Y-m-d|d.m.Y', startDay: 1,
+            minValue: new Date(1900, 0, 1), maxValue: new Date(2100, 11, 31)}];
         Ext.applyIf(config, Ext.apply({
-            title: record.id ? 'Редактировать событие' : 'Добавить событие',
+            title: copying ? 'Добавить на другие даты' : (record.id ? 'Редактировать событие' : 'Добавить событие'),
             width: Math.min(600, Ext.getBody().getViewSize().width - 32),
             record, baseParams: params('save'),
             fields: [
                 {xtype: 'hidden', name: 'id', value: record.id || 0},
                 {xtype: 'hidden', name: 'date_iso'},
-                {xtype: 'datefield', name: 'event_date', fieldLabel: 'Дата события', allowBlank: false,
-                    format: 'd.m.Y', altFormats: 'Y-m-d|d.m.Y', startDay: 1,
-                    minValue: new Date(1900, 0, 1), maxValue: new Date(2100, 11, 31)},
+                {xtype: 'hidden', name: 'dates_json'},
+                ...dateFields,
                 {xtype: 'combo', name: 'type', hiddenName: 'type', fieldLabel: 'Тип события',
                     allowBlank: false, editable: false, forceSelection: true, mode: 'local', triggerAction: 'all',
                     store: new Ext.data.JsonStore({fields: ['code', 'name'], data: config.types}),
@@ -50,10 +64,47 @@
         ScheduleDates.EventWindow.superclass.constructor.call(this, config);
     };
     Ext.extend(ScheduleDates.EventWindow, MODx.Window, {
+        makeDateRow: function(value) {
+            return {xtype: 'container', layout: 'hbox', layoutConfig: {align: 'middle'}, height: 34, style: 'margin-bottom:8px', items: [
+                {xtype: 'datefield', itemId: 'date', name: 'schedule_date_' + this.dateCounter++,
+                    flex: 1, value: value || '', allowBlank: false, hideLabel: true,
+                    format: 'd.m.Y', altFormats: 'Y-m-d|d.m.Y', startDay: 1,
+                    minValue: new Date(1900, 0, 1), maxValue: new Date(2100, 11, 31)},
+                {xtype: 'button', text: 'Удалить', cls: 'sd-date-remove', margins: '0 0 0 8', handler: function(button) {
+                    const rows = this.fp.getComponent('dates');
+                    if (rows.items.getCount() > 1) {
+                        rows.remove(button.ownerCt, true);
+                        rows.doLayout();
+                    }
+                }, scope: this}
+            ]};
+        },
+        addDate: function() {
+            const rows = this.fp.getComponent('dates');
+            if (rows.items.getCount() >= 366) {
+                MODx.msg.alert('Даты событий', 'За один раз можно добавить не более 366 дат.');
+                return;
+            }
+            const row = rows.add(this.makeDateRow());
+            rows.doLayout();
+            row.getComponent('date').focus(false, 100);
+        },
         submit: function() {
             const form = this.fp.getForm();
             if (!form.isValid()) return;
-            form.findField('date_iso').setValue(form.findField('event_date').getValue().format('Y-m-d'));
+            if (this.multipleDates) {
+                const dates = [];
+                let valid = true;
+                this.fp.getComponent('dates').items.each(row => {
+                    const field = row.getComponent('date');
+                    if (!field.validate()) valid = false;
+                    else dates.push(field.getValue().format('Y-m-d'));
+                });
+                if (!valid) return;
+                form.findField('dates_json').setValue(Ext.encode(dates));
+            } else {
+                form.findField('date_iso').setValue(form.findField('event_date').getValue().format('Y-m-d'));
+            }
             ScheduleDates.EventWindow.superclass.submit.call(this);
         }
     });
@@ -91,6 +142,7 @@
             {text: 'Редактировать', handler: this.editRow, scope: this},
             {text: 'Удалить', handler: this.removeRow, scope: this}
         ];
+        if (isEvent) toolbar.splice(2, 0, {text: 'Добавить на другие даты', handler: this.copyRow, scope: this});
         toolbar.push('->');
         if (isEvent) toolbar.push({
             xtype: 'container', layout: 'form', cls: 'grid-filter', width: 110,
@@ -151,7 +203,12 @@
             if (record) this.openRow(Ext.apply({}, record.data));
             else MODx.msg.alert('Редактирование', 'Сначала выберите строку.');
         },
-        openRow: function(record) {
+        copyRow: function() {
+            const record = this.getSelectionModel().getSelected();
+            if (record) this.openRow(Ext.apply({}, record.data), true);
+            else MODx.msg.alert('Добавить на другие даты', 'Сначала выберите событие.');
+        },
+        openRow: function(record, copying) {
             if (this.kind === 'types') {
                 MODx.load({xtype: 'sd-window-type', record}).show();
                 return;
@@ -161,7 +218,7 @@
                     MODx.msg.alert('Типы событий', 'Сначала добавьте тип события на вкладке «Типы событий».');
                     return;
                 }
-                MODx.load({xtype: 'sd-window-event', record, types: response.results,
+                MODx.load({xtype: 'sd-window-event', record, copyEvent: copying, types: response.results,
                     defaultDate: this.year === new Date().getFullYear() ? new Date() : new Date(this.year, 0, 1)}).show();
             }, this);
         },
@@ -176,8 +233,10 @@
             }, this);
         },
         getMenu: function() {
-            return [{text: 'Редактировать', handler: this.editRow, scope: this},
+            const menu = [{text: 'Редактировать', handler: this.editRow, scope: this},
                 {text: 'Удалить', handler: this.removeRow, scope: this}];
+            if (this.kind === 'events') menu.splice(1, 0, {text: 'Добавить на другие даты', handler: this.copyRow, scope: this});
+            return menu;
         }
     });
     Ext.reg('sd-grid', ScheduleDates.Grid);
